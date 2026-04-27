@@ -150,6 +150,21 @@ h2 {
   position: relative;
 }
 
+.scene-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.scene.ready .scene-fallback {
+  display: none;
+}
+
 .scene canvas {
   display: block;
 }

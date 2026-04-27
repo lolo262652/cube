@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Atelier Cube 3D</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=scene-fallback" />
     <script type="importmap">
       {
         "imports": {
@@ -33,7 +33,11 @@
             </label>
           </div>
         </div>
-        <div id="scene" class="scene"></div>
+        <div id="scene" class="scene">
+          <div id="scene-fallback" class="scene-fallback">
+            Le rendu 3D se charge. Si le cube n'apparait pas, ouvre l'application avec http://localhost:8000/index.html.
+          </div>
+        </div>
         <div class="statusbar">
           <span id="print-size">Cube 50 mm</span>
           <span id="face-status">Face avant selectionnee</span>
@@ -119,6 +123,6 @@
       </aside>
     </main>
 
-    <script type="module" src="./tetris.js?v=file-picker"></script>
+    <script type="module" src="./tetris.js?v=scene-fallback"></script>
   </body>
 </html>

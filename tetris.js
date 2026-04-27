@@ -93,6 +93,8 @@ let lastDownloadUrl = null;
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 sceneHost.appendChild(renderer.domElement);
+sceneHost.classList.add("ready");
+document.getElementById("scene-fallback")?.setAttribute("hidden", "");
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#eef3f6");
@@ -615,39 +617,45 @@ function loadProject(file) {
 }
 
 async function exportStl() {
-  saveState.textContent = "Generation du STL...";
+  try {
+    saveState.textContent = "Generation du STL...";
 
-  if (!ensureActiveFont()) {
-    await fontRequest;
-  }
-
-  const triangles = [];
-  addRoundedCubeTriangles(triangles);
-
-  for (const face of FACE_ORDER) {
-    const text = state.faces[face].trim();
-    if (!text) {
-      continue;
+    if (!ensureActiveFont()) {
+      await fontRequest;
     }
-    const geometry = createEngravingGeometry(face, text, state.textDepth);
-    const positions = geometry.getAttribute("position").array;
-    for (let i = 0; i < positions.length; i += 9) {
-      triangles.push([
-        new THREE.Vector3(positions[i], positions[i + 1], positions[i + 2]),
-        new THREE.Vector3(positions[i + 3], positions[i + 4], positions[i + 5]),
-        new THREE.Vector3(positions[i + 6], positions[i + 7], positions[i + 8]),
-      ]);
-    }
-    geometry.dispose();
-  }
 
-  const stl = trianglesToStl(triangles);
-  await saveBlob(new Blob([stl], { type: "model/stl" }), {
-    filename: "cube-personnalise.stl",
-    message: "STL pret pour Bambu Studio",
-    description: "Modele STL",
-    accept: { "model/stl": [".stl"], "application/sla": [".stl"] },
-  });
+    const triangles = [];
+    addRoundedCubeTriangles(triangles);
+
+    for (const face of FACE_ORDER) {
+      const text = state.faces[face].trim();
+      if (!text) {
+        continue;
+      }
+      const geometry = createEngravingGeometry(face, text, state.textDepth);
+      const positions = geometry.getAttribute("position").array;
+      for (let i = 0; i < positions.length; i += 9) {
+        triangles.push([
+          new THREE.Vector3(positions[i], positions[i + 1], positions[i + 2]),
+          new THREE.Vector3(positions[i + 3], positions[i + 4], positions[i + 5]),
+          new THREE.Vector3(positions[i + 6], positions[i + 7], positions[i + 8]),
+        ]);
+      }
+      geometry.dispose();
+    }
+
+    const stl = trianglesToBinaryStl(triangles);
+    const blob = new Blob([stl], { type: "model/stl" });
+    await saveBlob(blob, {
+      filename: "cube-personnalise.stl",
+      message: `STL pret (${triangles.length} triangles, ${formatBytes(blob.size)})`,
+      description: "Modele STL",
+      accept: { "model/stl": [".stl"], "application/sla": [".stl"] },
+    });
+  } catch (error) {
+    console.error(error);
+    saveState.textContent = `Erreur export STL: ${error.message || "generation impossible"}`;
+  }
 }
 
 function addRoundedCubeTriangles(triangles) {
@@ -703,7 +711,12 @@ function trianglesToStl(triangles) {
 }
 
 async function saveBlob(blob, options) {
-  if (window.showSaveFilePicker) {
+  if (!blob.size) {
+    saveState.textContent = "Erreur: fichier vide";
+    return;
+  }
+
+  if (window.showSaveFilePicker && window.location.protocol !== "file:") {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: options.filename,
@@ -715,7 +728,7 @@ async function saveBlob(blob, options) {
         ],
       });
       const writable = await handle.createWritable();
-      await writable.write(blob);
+      await writable.write({ type: "write", data: blob });
       await writable.close();
       saveState.textContent = `${options.message} - ${handle.name}`;
       return;
@@ -728,16 +741,70 @@ async function saveBlob(blob, options) {
     }
   }
 
-  downloadBlob(blob, options.filename, options.message);
+  await downloadBlob(blob, options.filename, options.message);
 }
 
-function downloadBlob(blob, filename, message) {
+function trianglesToBinaryStl(triangles) {
+  const bytes = new ArrayBuffer(84 + triangles.length * 50);
+  const view = new DataView(bytes);
+  const header = "cube_personnalise";
+
+  for (let i = 0; i < header.length; i += 1) {
+    view.setUint8(i, header.charCodeAt(i));
+  }
+
+  view.setUint32(80, triangles.length, true);
+  let offset = 84;
+
+  for (const triangle of triangles) {
+    const normal = new THREE.Vector3()
+      .subVectors(triangle[1], triangle[0])
+      .cross(new THREE.Vector3().subVectors(triangle[2], triangle[0]))
+      .normalize();
+    const values = [
+      normal.x,
+      normal.y,
+      normal.z,
+      triangle[0].x,
+      triangle[0].y,
+      triangle[0].z,
+      triangle[1].x,
+      triangle[1].y,
+      triangle[1].z,
+      triangle[2].x,
+      triangle[2].y,
+      triangle[2].z,
+    ];
+
+    for (const value of values) {
+      view.setFloat32(offset, Number.isFinite(value) ? value : 0, true);
+      offset += 4;
+    }
+
+    view.setUint16(offset, 0, true);
+    offset += 2;
+  }
+
+  return bytes;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) {
+    return `${bytes} o`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} Ko`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+async function downloadBlob(blob, filename, message) {
   if (lastDownloadUrl) {
     URL.revokeObjectURL(lastDownloadUrl);
   }
 
-  const url = URL.createObjectURL(blob);
-  lastDownloadUrl = url;
+  const url = window.location.protocol === "file:" ? await blobToDataUrl(blob) : URL.createObjectURL(blob);
+  lastDownloadUrl = url.startsWith("blob:") ? url : null;
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -751,6 +818,15 @@ function downloadBlob(blob, filename, message) {
   fallback.download = filename;
   fallback.textContent = `Telecharger ${filename}`;
   saveState.replaceChildren(`${message} - `, fallback);
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(blob);
+  });
 }
 
 faceButtons.forEach((button) => {
