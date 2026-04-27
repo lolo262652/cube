@@ -39,6 +39,10 @@ const state = {
   textDepth: 1.6,
   textScale: 79,
   fontFamily: "Arial",
+  line1Scale: 100,
+  line2Scale: 100,
+  line1X: 50,
+  line2X: 50,
   line1Y: 40,
   line2Y: 72,
   cornerRadius: 2,
@@ -69,12 +73,20 @@ const fontFamily = document.getElementById("font-family");
 const cubeSize = document.getElementById("cube-size");
 const textDepth = document.getElementById("text-depth");
 const textSize = document.getElementById("text-size");
+const line1Size = document.getElementById("line-1-size");
+const line2Size = document.getElementById("line-2-size");
+const line1X = document.getElementById("line-1-x");
+const line2X = document.getElementById("line-2-x");
 const line1Y = document.getElementById("line-1-y");
 const line2Y = document.getElementById("line-2-y");
 const cornerRadius = document.getElementById("corner-radius");
 const sizeValue = document.getElementById("size-value");
 const depthValue = document.getElementById("depth-value");
 const textSizeValue = document.getElementById("text-size-value");
+const line1SizeValue = document.getElementById("line-1-size-value");
+const line2SizeValue = document.getElementById("line-2-size-value");
+const line1XValue = document.getElementById("line-1-x-value");
+const line2XValue = document.getElementById("line-2-x-value");
 const line1Value = document.getElementById("line-1-value");
 const line2Value = document.getElementById("line-2-value");
 const cornerValue = document.getElementById("corner-value");
@@ -156,10 +168,8 @@ function drawPartitionedFaceText(ctx, text, x, y, maxWidth, maxHeight, baseFontS
   const lines = createTwoCenteredLines(ctx, cleanText, maxWidth).slice(0, 2);
   const halfHeight = maxHeight / 2;
   const top = y - maxHeight / 2;
-  const lineCenters = [
-    top + (maxHeight * state.line1Y) / 100,
-    top + (maxHeight * state.line2Y) / 100,
-  ];
+  const left = x - maxWidth / 2;
+  const lineSettings = getLineSettings(maxWidth, maxHeight, baseFontSize, top, left);
 
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -169,7 +179,8 @@ function drawPartitionedFaceText(ctx, text, x, y, maxWidth, maxHeight, baseFontS
       return;
     }
 
-    let fontSize = Math.min(baseFontSize, Math.floor(halfHeight * 0.54));
+    const settings = lineSettings[index];
+    let fontSize = Math.min(settings.fontSize, Math.floor(halfHeight * 0.54));
     while (fontSize >= 6) {
       ctx.font = textFont(fontSize);
       const width = ctx.measureText(line).width;
@@ -178,8 +189,23 @@ function drawPartitionedFaceText(ctx, text, x, y, maxWidth, maxHeight, baseFontS
       }
       fontSize -= 1;
     }
-    drawLineCenteredInZone(ctx, line, x, lineCenters[index], maxWidth, halfHeight, fontSize);
+    drawLineCenteredInZone(ctx, line, settings.x, settings.y, maxWidth, halfHeight, fontSize);
   });
+}
+
+function getLineSettings(maxWidth, maxHeight, baseFontSize, top = 0, left = 0) {
+  return [
+    {
+      x: left + (maxWidth * state.line1X) / 100,
+      y: top + (maxHeight * state.line1Y) / 100,
+      fontSize: baseFontSize * (state.line1Scale / 100),
+    },
+    {
+      x: left + (maxWidth * state.line2X) / 100,
+      y: top + (maxHeight * state.line2Y) / 100,
+      fontSize: baseFontSize * (state.line2Scale / 100),
+    },
+  ];
 }
 
 function drawLineCenteredInZone(ctx, line, centerX, centerY, maxWidth, zoneHeight, fontSize) {
@@ -407,22 +433,22 @@ function createEngravingGeometry(face, text, depth) {
   const ctx = document.createElement("canvas").getContext("2d");
   ctx.font = textFont(baseSize);
   const lines = createTwoCenteredLines(ctx, normalizeFaceText(text).toUpperCase(), maxWidth).slice(0, 2);
-  const top = state.cubeSize / 2;
-  const lineCenters = [
-    top - (state.cubeSize * state.line1Y) / 100,
-    top - (state.cubeSize * state.line2Y) / 100,
-  ];
+  const lineSettings = getLineSettings(maxWidth, state.cubeSize, baseSize, 0, -maxWidth / 2).map((settings) => ({
+    x: settings.x,
+    y: state.cubeSize / 2 - settings.y,
+    fontSize: settings.fontSize,
+  }));
 
   for (const [index, line] of lines.entries()) {
     if (!line) {
       continue;
     }
-    const lineGeometry = createSmoothLineGeometry(line, maxWidth, maxLineHeight, baseSize, depth);
+    const lineGeometry = createSmoothLineGeometry(line, maxWidth, maxLineHeight, lineSettings[index].fontSize, depth);
     lineGeometry.computeBoundingBox();
     const box = lineGeometry.boundingBox;
     const centerX = (box.min.x + box.max.x) / 2;
     const centerY = (box.min.y + box.max.y) / 2;
-    lineGeometry.translate(-centerX, lineCenters[index] - centerY, 0);
+    lineGeometry.translate(lineSettings[index].x - centerX, lineSettings[index].y - centerY, 0);
     const matrix = new THREE.Matrix4().makeBasis(right, up, inward);
     matrix.setPosition(baseCenter);
     lineGeometry.applyMatrix4(matrix);
@@ -554,6 +580,10 @@ function updateUi() {
   sizeValue.textContent = `${state.cubeSize} mm`;
   depthValue.textContent = `${state.textDepth.toFixed(1)} mm`;
   textSizeValue.textContent = `${state.textScale}%`;
+  line1SizeValue.textContent = `${state.line1Scale}%`;
+  line2SizeValue.textContent = `${state.line2Scale}%`;
+  line1XValue.textContent = `${state.line1X}%`;
+  line2XValue.textContent = `${state.line2X}%`;
   line1Value.textContent = `${state.line1Y}%`;
   line2Value.textContent = `${state.line2Y}%`;
   cornerValue.textContent = `${roundedCornerRadius().toFixed(1)} mm`;
@@ -561,6 +591,10 @@ function updateUi() {
   cubeSize.value = state.cubeSize;
   textDepth.value = state.textDepth;
   textSize.value = state.textScale;
+  line1Size.value = state.line1Scale;
+  line2Size.value = state.line2Scale;
+  line1X.value = state.line1X;
+  line2X.value = state.line2X;
   line1Y.value = state.line1Y;
   line2Y.value = state.line2Y;
   cornerRadius.max = String(Math.max(1, Math.floor(state.cubeSize / 2 - 1)));
@@ -596,6 +630,10 @@ function loadProject(file) {
       state.textDepth = Number(data.textDepth) || 1.2;
       state.textScale = Number(data.textScale) || 64;
       state.fontFamily = data.fontFamily || "Arial";
+      state.line1Scale = clamp(Number(data.line1Scale) || 100, 40, 160);
+      state.line2Scale = clamp(Number(data.line2Scale) || 100, 40, 160);
+      state.line1X = clamp(Number(data.line1X) || 50, 5, 95);
+      state.line2X = clamp(Number(data.line2X) || 50, 5, 95);
       state.line1Y = clamp(Number(data.line1Y) || 25, 8, 48);
       state.line2Y = clamp(Number(data.line2Y) || 86, 52, 94);
       state.cornerRadius = clamp(Number(data.cornerRadius) || 9, 1, state.cubeSize / 2 - 0.6);
@@ -860,6 +898,34 @@ textDepth.addEventListener("input", () => {
 
 textSize.addEventListener("input", () => {
   state.textScale = Number(textSize.value);
+  updateUi();
+  markDirty();
+  buildPreview();
+});
+
+line1Size.addEventListener("input", () => {
+  state.line1Scale = Number(line1Size.value);
+  updateUi();
+  markDirty();
+  buildPreview();
+});
+
+line2Size.addEventListener("input", () => {
+  state.line2Scale = Number(line2Size.value);
+  updateUi();
+  markDirty();
+  buildPreview();
+});
+
+line1X.addEventListener("input", () => {
+  state.line1X = Number(line1X.value);
+  updateUi();
+  markDirty();
+  buildPreview();
+});
+
+line2X.addEventListener("input", () => {
+  state.line2X = Number(line2X.value);
   updateUi();
   markDirty();
   buildPreview();
